@@ -4,28 +4,32 @@ format: html
 editor: visual
 ---
 
-Packages used for the Dataset Analysis.
+# **Packages**
 
 ```{r}
 suppressPackageStartupMessages({
   suppressWarnings({
-    library(dplyr)
-    library(readr)
-    library(ggplot2)
-    library(plotly)
-    library(leaflet)
-    library(sf)
-    library(caret)
-    library(rpart)
-    library(wordcloud)
-    library(tm)
-    library(tidyverse)
-    library(RColorBrewer)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(sf)
+library(caret)
+library(rpart)
+library(wordcloud)
+library(tm)
+library(tidyverse)
+library (RColorBrewer)
+library (fuzzyjoin)
+library(tidyverse)
+library(caret)
+library(nnet)
   })
 })
 ```
 
-Reading in the CSV Files. Yes i know i have more than needed, but i found 3 online and then created my own data set in order to make a word cloud. I consider this my own superior enhancement (SE5).
+Reading in the CSV Files. Yes i know i have more than needed, but i found 3 online and then created my own data set in order to make a word cloud. I also downloaded a dataset for world shape. I consider this my own superior enhancements, using more than the required amount of datasets, to give an insight on the the current cyber threat landscape, taking past databreaches into account and how we can learn about this going forward (SE5).
 
 ```{r message=FALSE}
 # Reading the dataset with the correct file path and extension
@@ -33,10 +37,10 @@ cyberthreat <- read_csv('C:/Cybersecurity Masters/Blair Applied Analytics/Assign
 countries <- read_csv('C:/Cybersecurity Masters/Blair Applied Analytics/Assignment 3/Assignment3Project/countries.csv')
 databreaches <- read_csv('C:/Cybersecurity Masters/Blair Applied Analytics/Assignment 3/Assignment3Project/databreaches.csv')
 world_shape <- st_read("C:/Cybersecurity Masters/Blair Applied Analytics/Assignment 3/Assignment3Project/world-administrative-boundaries.shp", quiet = TRUE)
-wordcloud_data <- read.csv("C:/Cybersecurity Masters/Blair Applied Analytics/Assignment 3/Assignment3Project/wordcloudfile.csv")
+wordcloud_data <- read.csv("C:/Cybersecurity Masters/Blair Applied Analytics/Assignment 3/Assignment3Project/wordcloudfile.csv", stringsAsFactors = FALSE, fileEncoding = "UTF-8-BOM")
 ```
 
-```{r}
+```{r echo=FALSE, results='hide'}
 # Display the first few rows of each dataset for initial exploration
 head(cyberthreat)
 head(databreaches)
@@ -59,57 +63,67 @@ countries <- na.omit(countries)
 
 **Dataset : Cyberthreats.csv**
 
-In my analysis, I conducted a detailed examination of a cybersecurity dataset to identify and analyse the most prevalent types of cyber attacks and the protocols involved in these incidents. By calculating the top three attack types and further analysing the percentage split of protocols within each attack type, I've uncovered not only which attacks are most common but also how they are carried out. This insight is crucial for understanding current cyber threat trends and highlights the necessity for targeted defensive strategies against these specific attack vectors. My use of interactive visualisation tools, like Plotly, to present this data effectively communicates the significance and distribution of these threats, offering a clear and engaging interpretation of the data. This analysis serves as a foundational step towards enhancing cybersecurity measures and prioritising response efforts to better protect against the most significant threats.
+I identified the 3 most common attack types, in order to have an understanding on the current global threat landscape. Firstly we see the 3 top attack types are DOS, Phishing and Ransomware, according to the dataset. It is my interpretation that these attacks are prevalent in a global context.
 
 ```{r}
-# Identify the top 3 most common Attack Types (or more if there are ties)
+# Assuming cyberthreat is your data frame with the attack types and their counts
+
+# Calculate the top 3 most common Attacktypes (or more if there are ties)
 top_three_attacktypes <- cyberthreat %>%
   count(Attacktype, sort = TRUE) %>%
   top_n(n = 3, wt = n)
 
-# Generate a rainbow color scheme based on the number of unique attack types included
-num_of_attack_types <- nrow(top_three_attacktypes)
-colors <- rainbow(num_of_attack_types)
+# Define specific colors for the pie chart
+colors <- c("pink", "lightblue", "green")
 
-# Create a bar plot using Plotly to visualize the top attack types
-plot <- plot_ly(data = top_three_attacktypes, x = ~Attacktype, y = ~n, type = 'bar',
-                marker = list(color = colors),
-                text = ~paste('Count: ', n)) %>%
-  layout(title = "Top Attack Types",
-         xaxis = list(title = "Attack Type", tickangle = -45, tickfont = list(size = 10)),
-         yaxis = list(title = "Frequency"))
+# Create a doughnut pie chart without the Attack Types labels displayed on the segments and with the percentages upright
+plot <- plot_ly(data = top_three_attacktypes, labels = ~Attacktype, values = ~n, type = 'pie',
+                marker = list(colors = colors, line = list(color = 'white', width = 2)),  # White line for doughnut
+                textinfo = "percent",  # Include only percentages
+                hole = 0.6,  # Size of the hole (doughnut effect)
+                hoverinfo = "label+percent+value") %>%  # Hover information
+  layout(title = "Top Attack Types",  # Chart title
+         showlegend = TRUE,  # Show legend
+         annotations = list(  # Annotation for placing text in the center
+           list(text = "Attack Type",  # Display "Attack Type" in the center
+                font = list(size = 20),  # Text size
+                showarrow = FALSE,
+                x = 0.5, y = 0.5,  # Position in the center
+                xanchor = 'center', yanchor = 'middle')  # Anchor point
+         ))
 
-# Render the plot
+# Render the pie chart
 plot
 
-# Filter the data to include only rows with the top 3 Attack Types
-top_attacktypes_data <- cyberthreat %>%
-  filter(Attacktype %in% top_three_attacktypes$Attacktype)
 
-# Calculate the percentage split of 'Protocol' within each 'Attacktype'
-protocol_percentage <- top_attacktypes_data %>%
-  group_by(Attacktype, Protocol) %>%
-  summarise(Count = n(), .groups = 'drop') %>%
-  mutate(Total = sum(Count), Percentage = (Count / Total) * 100) %>%
-  select(Attacktype, Protocol, Percentage) %>%
-  ungroup()
-
-# Print the results
-print(protocol_percentage)
-
-# Create a grouped bar plot with ggplot to show Protocol usage percentage by Attack Type
-ggplot(protocol_percentage, aes(fill=Protocol, y=Percentage, x=Attacktype)) +
-  geom_bar(position="fill", stat="identity") +
-  scale_y_continuous(labels=scales::percent) +
-  labs(title="Protocol Usage Percentage by Attack Type",
-       x="Attack Type", y="Percentage",
-       fill="Protocol") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle=45, hjust=1))
 
 ```
 
-**Dataset 2: Data Breaches**
+Within the dataset, we have our protocols, tcp and udp only. Firstly i wanted to see percentage split of 'Protocol' within each 'Attacktype' and then create a stacked barchart using plotly to show Protocol usage percentage by Attack Type. TCP is like sending a letter with confirmation of delivery, so it's used more in attacks where making sure the message gets through is important, like overwhelming a server or encrypting data for ransom. UDP is like sending a message without confirmation, often used in real-time stuff like gaming. Attackers might use it more in tricks like phishing because it's less noticeable and sneaky.
+
+```{r}
+# Calculate the percentage split of 'Protocol' within each 'Attacktype'
+protocol_percentage <- cyberthreat %>%
+  filter(Attacktype %in% top_three_attacktypes$Attacktype) %>%
+  count(Attacktype, Protocol) %>%
+  group_by(Attacktype) %>%
+  mutate(Percentage = n / sum(n) * 100) %>%
+  ungroup()
+
+# Define the colors for the bar chart
+colors <- setNames(c("blue", "orange"), levels(protocol_percentage$Protocol))
+
+# Create an interactive stacked bar chart
+plot <- plot_ly(data = protocol_percentage, x = ~Attacktype, y = ~Percentage, type = 'bar', color = ~Protocol, colors = colors) %>%
+  layout(yaxis = list(title = "Percentage"),
+         barmode = 'stack',
+         title = "Percentage Split of Protocol within Each Attacktype")
+
+# Render the plot
+plot
+```
+
+# **Dataset 2: Data Breaches**
 
 Firstly, the frequency of data breaches over the years was explored, revealing trends over time through a line chart, indicating potentially increasing or fluctuating occurrences. This temporal analysis helps in understanding how the cybersecurity landscape has evolved.
 
@@ -121,7 +135,6 @@ databreaches$Year <- as.numeric(as.character(databreaches$Year))
 breaches_per_year <- databreaches %>%
   group_by(Year) %>%
   summarise(Count = n())
-print(breaches_per_year)
 # Frequency of Data Breaches Over Years
 ggplot(breaches_per_year, aes(x = Year, y = Count)) +
   geom_line() + geom_point() +
@@ -130,46 +143,76 @@ ggplot(breaches_per_year, aes(x = Year, y = Count)) +
 
 ```
 
+The graph's peaks correspond to years that were particularly notorious for cybersecurity incidents. For example, the 2010 breach at the Educational Credit Management Corporation impacted millions, while 2011 saw a substantial leak at Sony Pictures. The trend continued in 2012 with a significant incident at the South Carolina State Department of Revenue. However, 2013 stands out as a particularly vulnerable year with multiple large-scale breaches, including the infamous Yahoo breach affecting billions of user accounts, Target's breach during the holiday shopping season impacting millions, and the Experian breach resulting in the exposure of hundreds of millions of Americans' personal information. These incidents highlight the growing scale and sophistication of cyber attacks in the early 2010s, emphasizing an urgent need for enhanced cybersecurity measures during this era.
+
 Secondly, an investigation into which sectors have been most affected by data breaches showed a ranking based on the number of incidents. This analysis is crucial for identifying industries that may be particularly vulnerable or targeted.
 
 ```{r}
 # Analysis 2: Sectors Most Affected by Data Breaches
-# Calculating and printing breaches by sector
 breaches_by_sector <- databreaches %>%
   group_by(Sector) %>%
   summarise(Count = n()) %>%
-  arrange(desc(Count))
+  arrange(desc(Count)) %>%
+  slice_max(order_by = Count, n = 10) %>%
+  arrange(Count) # Use arrange without desc for ascending order
 
-print(breaches_by_sector)
+# Plotting with Plotly, making the chart colorful and adjusting y-axis step size
+fig <- plot_ly(breaches_by_sector, x = ~Sector, y = ~Count, type = 'bar', orientation = 'v', 
+               marker = list(color = RColorBrewer::brewer.pal(10, "Set3"))) %>%
+  layout(title = 'Top 10 Sectors by Number of Breaches',
+         xaxis = list(title = 'Sector', tickangle = 0, tickfont = list(size = 10)),
+         yaxis = list(title = 'Count', dtick = 5), # Setting y-axis step size to 5
+         colorway = RColorBrewer::brewer.pal(10, "Set3"))
+
+# To show the plot in an interactive window
+fig
 ```
 
 Thirdly, the focus shifted to the methods of data breaches, where duplicates were removed for an accurate count, and the most common tactics employed by attackers were identified. This step is key in understanding the preferred methods of exploitation and could guide defensive strategies.
 
 ```{r}
 # Analysis 3: Most Common Methods of Data Breaches
-# Removing complete duplicate rows
-databreaches_unique <- databreaches %>%
-  distinct()
-# Calculating and printing common methods of breaches on the unique dataset
-common_methods <- databreaches_unique %>%
+# Calculating common methods of breaches on the  dataset
+common_methods <- databreaches %>%
   group_by(Method) %>%
   summarise(Count = n()) %>%
   arrange(desc(Count))
 
-print(common_methods)
+# Plotting with Plotly
+fig <- plot_ly(common_methods, x = ~Method, y = ~Count, type = 'bar', orientation = 'v',
+               marker = list(color = RColorBrewer::brewer.pal(n = length(unique(common_methods$Method)), name = "Set3"))) %>%
+  layout(title = 'Most Common Methods of Data Breaches',
+         xaxis = list(title = 'Method'),
+         yaxis = list(title = 'Count', dtick = 10), # Set y-axis step size to 5
+         showlegend = FALSE)
+
+# To show the plot in an interactive window
+fig
 ```
 
 Fourthly, the average number of records affected by breaches per sector was calculated, providing insights into the impact of breaches across different industries. This highlights sectors where breaches tend to be more devastating in terms of data exposure.
 
 ```{r}
 # Analysis 4: Average Number of Records Affected by Breaches Per Sector
-# Calculating and printing average records affected by breaches per sector
+# Calculating average records affected by breaches per sector
 average_records_per_sector <- databreaches %>%
   group_by(Sector) %>%
-  summarise(AverageRecords = mean(Records)) %>%
+  summarise(AverageRecords = mean(Records) / 1000000) %>%
   arrange(desc(AverageRecords))
 
-print(average_records_per_sector)
+# Selecting top 10 sectors
+top_10 <- head(average_records_per_sector, 10)
+
+# Creating a bar plot using Plotly
+plot <- plot_ly(top_10, x = ~Sector, y = ~AverageRecords, type = 'bar', 
+                name = 'Average Records Affected',
+                marker = list(color = rainbow(10))) %>%
+        layout(title = "Top 10 Sectors by Average Number of Records Affected by Breaches",
+               xaxis = list(title = "Sector", tickangle = 45, categoryorder = "total descending"),
+               yaxis = list(title = "Average Records Affected (Millions)", dtick = 20))
+
+# Display the plot
+plot
 
 ```
 
@@ -177,25 +220,150 @@ Lastly, an analysis of the average number of records affected by breaches per me
 
 ```{r}
 # Analysis 5: Average Number of Records Affected by Breaches Per Method
-# Calculating and printing average records affected by breaches per method
+# Calculating average records affected by breaches per method
 average_records_per_method <- databreaches %>%
   group_by(Method) %>%
   summarise(AverageRecords = mean(Records)) %>%
   arrange(desc(AverageRecords))
 
-print(average_records_per_method)
+# Format average records affected in millions with 4 decimal places
+average_records_per_method$TooltipText <- paste0(format(round(average_records_per_method$AverageRecords / 1000000, 4), nsmall = 4), " million")
 
-average_records_per_method <- databreaches %>%
-  group_by(Method) %>%
-  summarise(AverageRecords = mean(Records)) %>%
-  arrange(desc(AverageRecords))
-
-ggplot(average_records_per_method, aes(x = reorder(Method, AverageRecords), y = AverageRecords)) +
+# Creating the ggplot object
+gg <- ggplot(average_records_per_method, aes(x = reorder(Method, AverageRecords), y = AverageRecords, fill = Method, 
+                                             text = paste("Average Records Affected:", TooltipText))) +
   geom_col() +
   theme_minimal() +
   coord_flip() + # Flip coordinates for better readability
   scale_y_continuous(labels = scales::comma) + # Use comma formatting for large numbers
-  labs(title = "Average Records Affected by Breach Method", x = "Method", y = "Average Records")
+  labs(title = "Average Records Affected by Breach Method", x = "Method", y = "Average Records") +
+  theme(legend.position = "none")  # Remove legend as it's not needed here
+
+# Convert ggplot object to plotly for interactivity
+plot <- ggplotly(gg, tooltip = "text")
+
+# Display the plot
+plot
 ```
 
-Overall, these analyses offer a comprehensive overview of data breaches, pinpointing areas of concern and methods requiring heightened security measures. The interpretations guide strategic decisions in cybersecurity policy and investment, emphasizing the importance of tailored defenses across sectors and against specific breach methods.
+Tech companies are prime targets for cybercrime due to their repository of sensitive data, including personal information and intellectual property, that can be leveraged for illegal activities. The immense volume of data they manage heightens their appeal to hackers. Moreover, the industry's inherent complexity and interconnectedness introduce numerous vulnerabilities, while its rapid innovation occasionally outpaces security, leading to potential gaps in protection. Additionally, the technology sector's role in the global supply chain invites further risk from cyberattacks, and its cutting-edge developments make it a target for espionage, with state actors seeking to extract valuable trade secrets. The tech sector, along with others like healthcare and finance, have been found to be more vulnerable to attacks, as evidenced by breaches experienced in these sectors. The healthcare sector is at risk due to the valuable personal data they store, while financial service providers are targeted for the sensitive financial information they hold. Each of these industries faces unique challenges and threats, from basic malware to highly sophisticated attacks by organised criminals and state-sponsored actors​ ([Visual Capitalist](https://www.visualcapitalist.com/cp/visualizing-the-50-biggest-data-breaches-from-2004-2021/))​​ ([IFSEC Global](https://www.ifsecglobal.com/cyber-security/which-sectors-are-most-vulnerable-to-cyber-attacks/))​.
+
+# **Dataset 3 + 4 : Combing WorldShape Countries (Leaflet)**
+
+In the outlined code, a systematic method is applied to process and visualise cybersecurity threat data across different nations. Initially, specific metrics (CEI, GCI, NCSI, DDL) within the 'countries' dataset are converted to numeric form, facilitating the computation of an aggregated 'ThreatLevel'. This level is then used to classify countries into 'High', 'Medium', or 'Low' threat categories, based on predetermined thresholds. Subsequent steps involve ensuring data type consistency for 'CountryName' across datasets, merging the 'countries' dataset with 'databreaches' information, and integrating this combined dataset with a spatial dataset ('world_shape') to facilitate geographic visualisation. Finally, using the Leaflet library, an interactive map is generated, colour-coding countries according to their threat classification and providing detailed pop-up information. This process not only standardises the data for accurate comparison and analysis but also enables a nuanced visual representation of the global cybersecurity threat landscape.
+
+```{r}
+# Step 1: Prepare the 'countries' dataset
+countries <- countries %>%
+  mutate_at(vars(CEI, GCI, NCSI, DDL), as.numeric) %>%
+  rowwise() %>%
+  mutate(ThreatLevel = round(mean(c(CEI, GCI, NCSI, DDL), na.rm = TRUE), 2),
+         Classification = case_when(
+           ThreatLevel > 66 ~ "High",
+           ThreatLevel > 33 ~ "Medium",
+           TRUE ~ "Low"
+         )) %>%
+  ungroup()
+
+# Step 2: Ensure 'CountryName' columns match in type across datasets
+countries$CountryName <- as.character(countries$CountryName)
+databreaches$CountryName <- as.character(databreaches$CountryName)
+
+# Step 3: Join 'countries' and 'databreaches'
+combined_data <- left_join(countries, databreaches, by = "CountryName")
+
+# Step 4: Prepare the 'world_shape' spatial dataset
+# Ensure that 'world_shape' uses 'CountryName' for country names, and the column type matches
+world_shape$CountryName <- as.character(world_shape$name)
+
+# Step 5: Join 'combined_data' with 'world_shape'
+world_data <- left_join(world_shape, combined_data, by = "CountryName")
+
+# Step 6: Visualization with Leaflet
+leaflet(world_data) %>%
+  addProviderTiles(provider = providers$CartoDB.Positron) %>%
+  addPolygons(fillColor = ~case_when(
+    Classification == "High" ~ "red",
+    Classification == "Medium" ~ "yellow",
+    Classification == "Low" ~ "green",
+    TRUE ~ "grey"  # Grey for missing data
+  ), color = "#BDBDBD", weight = 1, fillOpacity = 0.7,
+  popup = ~paste(CountryName, "<br>", "Threat Level: ", ThreatLevel)) %>%
+  addLegend(position = "bottomright", values = ~Classification, title = "Threat Level",
+            labels = c("High", "Medium", "Low", "No Data"),
+            colors = c("red", "yellow", "green", "grey"))
+```
+
+# **Predictive Analysis**
+
+In the provided code, I first ensured consistency in case by converting the country names in both the "countries" and "databreaches" datasets to lowercase using the **`tolower()`** function. Then, I merged the two datasets based on the "CountryName" variable using the **`merge()`** function, creating a new dataset named "combined_data." Next, I performed feature engineering to categorize the severity of data breaches based on the number of records affected, creating a new variable called "Severity." I converted several variables to factors to prepare them for modeling. After splitting the data into training and testing sets, specifying 80% of the data for training and the remaining 20% for testing, and excluding the 'Entity' variable from both datasets, I trained a predictive model using the 'rpart' method. Finally, I made predictions on the test data and evaluated the model's performance using confusion matrix analysis, printing the results in a detailed and presentable way.
+
+```{r}
+# Assuming 'cyberthreat' is your DataFrame
+
+# Convert all categorical variables to factors
+cyberthreat$Protocol <- as.factor(cyberthreat$Protocol)
+cyberthreat$Flag <- as.factor(cyberthreat$Flag)
+cyberthreat$Packet <- as.factor(cyberthreat$Packet)
+cyberthreat$Attacktype <- as.factor(cyberthreat$Attacktype)
+# Ensure that any other categorical variables are also converted to factors
+
+# Add interaction terms between some of the predictors
+# Here we're creating interaction terms for 'Protocol' and 'Flag', and 'Packet' and 'Packet Size'
+cyberthreat$Protocol_Flag <- interaction(cyberthreat$Protocol, cyberthreat$Flag)
+cyberthreat$Packet_PacketSize <- interaction(cyberthreat$Packet, cyberthreat$`Packet Size`)
+
+# Convert the new interaction terms to factors
+cyberthreat$Protocol_Flag <- as.factor(cyberthreat$Protocol_Flag)
+cyberthreat$Packet_PacketSize <- as.factor(cyberthreat$Packet_PacketSize)
+
+# Split data into training and testing sets
+set.seed(123) # Ensure reproducibility
+index <- createDataPartition(cyberthreat$Attacktype, p = 0.7, list = FALSE)
+trainSet <- cyberthreat[index, ]
+testSet <- cyberthreat[-index, ]
+
+# Fit a multinomial logistic regression model including all relevant predictors and excluding 'ID'
+# Note: Now including the interaction terms in the model
+model <- multinom(Attacktype ~ . - ID - `Packet Size`, data = trainSet)
+
+# Predict on the test set
+predictions <- predict(model, newdata = testSet)
+
+# Calculate and print the accuracy
+accuracy <- sum(predictions == testSet$Attacktype) / nrow(testSet)
+print(paste("Accuracy:", accuracy))
+
+```
+
+```{r wordcloud-generation, warning=FALSE, message=FALSE}
+
+# Explicitly convert strings to UTF-8
+wordcloud_data$text <- iconv(wordcloud_data$text, "latin1", "ASCII", sub = "")
+
+# Create a text corpus
+docs <- Corpus(VectorSource(wordcloud_data$text))
+
+# Preprocess the data
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, stripWhitespace)
+
+# Create a term-document matrix
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+word_freqs <- sort(rowSums(m), decreasing = TRUE)
+word_freqs <- data.frame(word = names(word_freqs), freq = word_freqs)
+
+
+```
+
+![](wordcloud.png)
+
+# Mermaid
+
+Mermaid is a tool I find incredibly useful for creating diagrams and flowcharts from text. It’s much more straightforward and easier to maintain than messing about with traditional design software. In the example I'm working with, I used Mermaid to map out a complex data analysis project on cybersecurity, showing how I blend various datasets into a coherent analysis and eventually, insights. I set up nodes for each step of my process - from the datasets I start with, through the cleaning and analysing stages, all the way to the final visualisations, like maps and charts. By linking these nodes with arrows, Mermaid helps me draw a detailed picture of how the project flows from start to finish. It's brilliant because it simplifies the process of explaining the project's structure, making it clear how each stage leads to the next and how they all fit together. It’s a game-changer for making the complexities of data analysis more accessible and easier to share.
+
+![](images/Screenshot (149).png)
